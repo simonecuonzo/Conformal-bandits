@@ -569,7 +569,7 @@ def run_ucb_cp_partial_comb(df, *,
                 else:
   
                     # Formula classica (senza adattamento)
-                    scores[a] = (1-lam)*U_act[a]-  lam*np.abs(L_act[a])
+                    scores[a] = (1-lam)*U_act[a]+  lam*L_act[a]
            
             epsilon=0.5*t**(-decay)
 
@@ -697,7 +697,7 @@ def run_ucb_cp_partial_UL(df, *,
                 else:
 
                     # Formula classica (senza adattamento)
-                    scores[a] = 0.5*U_act[a]-  0.5*np.abs(L_act[a])
+                    scores[a] = 0.5*U_act[a]+  0.5*L_act[a]
             
             epsilon=0.5*t**(-decay)
 
@@ -819,7 +819,7 @@ def run_ucb_cp_partial_L(df, *,
                     scores[a] = np.inf
                 else:
 
-                    scores[a] = -np.abs(L_act[a]) 
+                    scores[a] = L_act[a]
 
            
             epsilon=0.5*t**(-decay)
@@ -891,134 +891,6 @@ def run_ucb_cp_partial_L(df, *,
 
 
 
-def run_ucb_cp_partial_ESI(df, *,
-                       alpha_target=0.1, eta=0.01,
-                       gamma1=0.6, beta=1.0,
-                       use_scaling=True,
-                       regime_mode=None,
-                       lam=0.5,
-                       lookback=250,
-                       warm_up=50,epsilon_0 = 0.05, decay=0.7):
-  
-    """
-    UCB-CP in setting PARTIAL INFORMATION (versione con regime_mode):
-      - regime_mode = None     → comportamento standard
-      - regime_mode = "score"  → funzione di scoring modificata in base al regime
-    """
-    arms = [c for c in df.columns if c != "Regime"]
-    K, T = len(arms), len(df)
-
-    # Stati
-    mu_act  = {a: 0.0 for a in arms}
-    L_act   = {a: -np.inf for a in arms}
-    U_act   = {a:  np.inf for a in arms}
-    ESI_act = {a: 0.0 for a in arms}
-    N_sel   = {a: 0 for a in arms}
-    alpha_k = {a: alpha_target for a in arms}
-    dt_arm  = {a: 0 for a in arms}
-
-    # Serie osservate
-    y_obs = {a: [] for a in arms}
-    t_obs = {a: [] for a in arms}
-
-    # Memoria rolling degli score conformali per ogni braccio
-    scores_hist = {a: [] for a in arms}
-    rows = []
-    
-    T0=warm_up
-
-    # Ciclo principale
-    for t in range(T):
-
-        # --- Warm-up ---
-        
-        if t < (3 * (T0+1)):
-            k_t = arms[t % K]
-        else:
-            scores = {}
-          
-
-            for a in arms:
-
-
-                if np.isinf(L_act[a]) or np.isinf(U_act[a]):
-                    
-                    scores[a] = np.inf
-                else:
- 
-                    # Formula classica (senza adattamento)
-                    scores[a] = ESI_act[a]
-            
-            epsilon=0.5*t**(-decay)
-
-
-            # --- Epsilon-greedy selection ---
-            if np.random.rand() > epsilon:
-                # sfrutta → scegli l’arm con score massimo
-                k_t = max(scores, key=scores.get)
-            else:
-                # esplora → scegli un arm diverso dal best
-                best_arm = max(scores, key=scores.get)
-                other_arms = [a for a in arms if a != best_arm]
-                k_t = np.random.choice(other_arms)
-
-        # --- Reward osservato ---
-        r_t = df[k_t].iloc[t]
-
-
-
-        # Aggiorna osservazioni
-        y_obs[k_t].append(r_t)
-        t_obs[k_t].append(t)
-
-        # Aggiorna tempo da ultima selezione
-        for a in arms:
-            dt_arm[a] = 0 if a == k_t else dt_arm[a] + 1
-
-
-
-    
-        if len(y_obs[k_t]) >=(T0+1):
-            mu, L, U, esi, alpha_new, scores_hist[k_t] = rolling_qr_aci_with_scaling(
-                y_obs=np.array(y_obs[k_t], dtype=float),
-                t_local=len(y_obs[k_t]) - 1,
-                alpha_t=alpha_k[k_t],
-                scores_history=scores_hist[k_t],
-                lookback=lookback,
-                eta=eta,
-                alpha_target=alpha_target,
-                use_scaling=use_scaling,
-                dt=dt_arm[k_t]
-            )
-            mu_act[k_t], L_act[k_t], U_act[k_t], ESI_act[k_t] = mu, L, U, esi
-            alpha_k[k_t] = float(np.clip(alpha_new, 1e-4, 0.5))
-
-
-        # Logging
-        rows.append({
-            "t": t,
-            "chosen_arm": k_t, "reward": r_t,
-            **{f"mu_{a}": mu_act[a] for a in arms},
-            **{f"L_{a}": L_act[a] for a in arms},
-            **{f"U_{a}": U_act[a] for a in arms},
-            **{f"ESI_{a}": ESI_act[a] for a in arms},
-            **{f"alpha_{a}": alpha_k[a] for a in arms},
-            **{f"dt_{a}": dt_arm[a] for a in arms},
-        })
-
-   
-    log_df = pd.DataFrame(rows)
-   
-    mask_after = log_df["t"] >= (3 *(T0+1) +1)
-    log_after = log_df.loc[mask_after].copy()
-
-    return log_df, log_after, {
-        "mu": mu_act, "L": L_act, "U": U_act, "ESI": ESI_act,
-        "alpha": alpha_k, "dt": dt_arm,
-        "lookback": lookback, "y_obs": y_obs, "t_obs": t_obs
-    }
-
-
 
 
 def run_ucb1_partial(df, T0, t_axis):
@@ -1063,7 +935,7 @@ def run_ucb1_partial(df, T0, t_axis):
         for a in arms:
             mu_a = rewards_sum[a] / max(pulls[a], 1)
             
-            exploration = sqrt(2.0 *log(t) / max(pulls[a], 1))
+            exploration = 0.1*sqrt(2.0 *log(t) / max(pulls[a], 1))
             scores[a] = mu_a + exploration
 
         # Selezione del braccio
@@ -1106,7 +978,6 @@ def montecarlo_comparison(dataset_generator,
                               "UCB-CP (comb)",
                               "UCB-CP (L)",
                               "UCB-CP (UL)",
-                              "UCB-CP (ESI)",
                               "UCB1"
                           ]):
 
@@ -1135,7 +1006,6 @@ def montecarlo_comparison(dataset_generator,
         "UCB-CP (comb)": run_ucb_cp_partial_comb,
         "UCB-CP (L)": run_ucb_cp_partial_L,
         "UCB-CP (UL)": run_ucb_cp_partial_UL,
-        "UCB-CP (ESI)": run_ucb_cp_partial_ESI,
         "UCB1": run_ucb1_partial
     }
 
@@ -1291,7 +1161,7 @@ def montecarlo_comparison(dataset_generator,
                     mu_hat = log_a.get(f"mu_{a}", pd.Series(np.zeros(len(log_a)))).to_numpy()
 
                     t_for_log = np.maximum(log_a["t"].to_numpy(), 2)
-                    expl = np.sqrt(2.0 * np.log(t_for_log) / pulls)
+                    expl = 0.1*np.sqrt(2.0 * np.log(t_for_log) / pulls)
                     L_ucb = mu_hat - expl
                     U_ucb = mu_hat + expl
 
@@ -1428,29 +1298,39 @@ def montecarlo_comparison(dataset_generator,
 
 alpha_target = 0.20
 eta          = 0.005
-lookback=250
-warm_up=1
+lookback = 250
+warm_up = 1
 
 lam = 0.7
 
-decay=0.4
+decay = 0.4
 
-epsilon_0=0.05
+epsilon_0 = 0.05
 
 
 use_scaling  = False
 
-T = 3000
-N_mc = 8#1000
+T = 2000 
+N_mc = 1000
 
 
-#small
+
+sd=0.01
+
+
+#scenario 1
+#mu=0.005
+
+#scenario 2
+#mu=0.001
+
+#scenario 3
+#mu=0.01
+
+#scenario 4
 mu=0.05
-sd=0.1
 
-#big
-#mu=0.5
-#sd=1
+
 
 def generate_three_gauss(T=T):
   arm1 = np.random.normal(mu, sd, T)

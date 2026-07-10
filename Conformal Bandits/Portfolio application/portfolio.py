@@ -30,9 +30,9 @@ def get_three_portfolios(start="2015-01-01",
 
     """
 
-    
+
     csv_path = "etf_prices.csv"
-  
+
     prices = pd.read_csv(csv_path, index_col="Date", parse_dates=True)
 
     prices = prices.sort_index().dropna(how="all")
@@ -170,15 +170,15 @@ def detect_regimes_hmm(start="2015-01-01", end="2025-01-01", n_states=3):
     Estimates a HMM model on the S&P 500 returns and identifies market regimes.
     Returns a time series with labels 'Bear', 'Neutral', and 'Bull'.
     """
-    
 
-   
+
+
     csv_path = "sp500_prices.csv"
 
-    
+
     data = pd.read_csv(csv_path, index_col="Date", parse_dates=True)
 
-    
+
     data = data.sort_index().dropna(how="all")
 
     print(data)
@@ -266,20 +266,20 @@ def rolling_qr_aci_with_scaling(y_obs, t_local, alpha_t,
     """
 
 
-    
+
     window_data = np.asarray(y_obs[:-1], float)
     tau_low, tau_high,tau_med = alpha_target/2 , 1 - alpha_target/2 , 0.5
     q_low = np.quantile(window_data, tau_low)
     q_high = np.quantile(window_data, tau_high)
     q_med = np.quantile(window_data, tau_med)
 
-    
-   
+
+
     y_t = float(y_obs[-1])
-    
- 
+
+
     recent_scores = scores_history
-    
+
     nc = len(recent_scores)
     if nc == 0:
         qn = 0.0
@@ -287,18 +287,18 @@ def rolling_qr_aci_with_scaling(y_obs, t_local, alpha_t,
         qn_idx = int(np.ceil((1 - alpha_t) * (nc + 1)) - 1)
         qn_idx = int(np.clip(qn_idx, 0, nc - 1))
         qn = float(np.sort(recent_scores)[qn_idx])
-    
+
 
     # predictive interval
     L_t = q_low - qn
     U_t = q_high + qn
     mu_med_t = q_med
-    
- 
+
+
     score_t = max(q_low - y_t, y_t - q_high)
-    scores_history.append(float(score_t))           
-    
-    
+    scores_history.append(float(score_t))
+
+
     # Update ACI
     covered = 1 if (L_t <= y_t <= U_t) else 0
     err = 1 - covered
@@ -342,15 +342,15 @@ def run_ucb_cp_partial(df, *,
 
     y_obs = {a: [] for a in arms}
     t_obs = {a: [] for a in arms}
-    
-    
+
+
     T0=lookback
-    
-    
+
+
     scores_hist = {a: [] for a in arms}
     rows = []
 
-   
+
     for t in range(T):
         regime_t = df["Regime"].iloc[t]
 
@@ -359,10 +359,10 @@ def run_ucb_cp_partial(df, *,
             k_t = arms[t % K]
         else:
             scores = {}
-         
+
 
             for a in arms:
-                
+
 
                 if np.isinf(L_act[a]) or np.isinf(U_act[a]):
                     scores[a] = np.inf
@@ -372,7 +372,7 @@ def run_ucb_cp_partial(df, *,
                     # ===============================
                     if regime_mode == "score":
 
-                        
+
 
 
                         if regime_t == "Bull":
@@ -380,13 +380,13 @@ def run_ucb_cp_partial(df, *,
                         elif regime_t == "Neutral":
                             scores[a] = U_act[a]
                         else:  # Bear
-                            scores[a] = -np.abs(L_act[a])
+                            scores[a] = L_act[a]
                     else:
                         # Classic formula (without adaptation)
                         scores[a] =  U_act[a]
 
-        
-       
+
+
             # --- Epsilon-greedy selection ---
             if np.random.rand() > epsilon:
                 # exploit → choose the weapon with the maximum score
@@ -406,13 +406,13 @@ def run_ucb_cp_partial(df, *,
         y_obs[k_t].append(r_t)
         t_obs[k_t].append(t)
 
-       
+
         for a in arms:
             dt_arm[a] = 0 if a == k_t else dt_arm[a] + 1
 
 
 
-        
+
         if len(y_obs[k_t]) >= (lookback + 1):
             mu, L, U, esi, alpha_new, scores_hist[k_t] = rolling_qr_aci_with_scaling(
                 y_obs=np.array(y_obs[k_t], dtype=float),
@@ -440,7 +440,7 @@ def run_ucb_cp_partial(df, *,
             **{f"dt_{a}": dt_arm[a] for a in arms},
         })
 
-   
+
     log_df = pd.DataFrame(rows)
     mask_after = log_df["t"] >= (3* (T0+1) + 1)
     log_after = log_df.loc[mask_after].copy()
@@ -457,7 +457,7 @@ def run_ucb_cp_partial(df, *,
 def run_ucb1_partial(df, T0, t_axis):
     """
     UCB1 with warm-up consistent with UCB-CP.
-   
+
     """
     arms = [c for c in df.columns if c != "Regime"]
     K = len(arms)
@@ -489,17 +489,17 @@ def run_ucb1_partial(df, T0, t_axis):
             **mu_vals,
             **N_vals
         })
-     
+
 
     # --- CLASSIC UCB1 (decision phase) ---
     for idx in range(3 * (T0+1), len(t_axis)):
         t = t_axis[idx]
         regime_t = df["Regime"].iloc[t]
 
-       
+
         scores = {
             a: (rewards_sum[a] / max(pulls[a], 1))
-               + sqrt(2.0 * log(max(t, 2)) / max(pulls[a], 1))
+               + 0.1*sqrt(2.0 * log(max(t, 2)) / max(pulls[a], 1))
             for a in arms
         }
         k = max(scores, key=scores.get)
@@ -566,7 +566,7 @@ def run_ucb1_partial_comb(df, T0, t_axis, lam=2.0):
             **mu_vals,
             **N_vals
         })
-       
+
 
     # --- UCB1 con regime-aware scoring ---
     for idx in range(3 * (T0+1), len(t_axis)):
@@ -577,7 +577,7 @@ def run_ucb1_partial_comb(df, T0, t_axis, lam=2.0):
         for a in arms:
             mean_a = rewards_sum[a] / max(pulls[a], 1)
             sigma_a = np.std(y_obs[a]) if len(y_obs[a]) > 1 else 0.0
-            expl = sqrt(2.0 * log(max(t, 2)) / max(pulls[a], 1))
+            expl = 0.1*sqrt(2.0 * log(max(t, 2)) / max(pulls[a], 1))
 
 
             adj_mean = (1-lam)* mean_a -  lam*sigma_a
@@ -601,7 +601,7 @@ def run_ucb1_partial_comb(df, T0, t_axis, lam=2.0):
             **mu_vals,
             **N_vals
         })
-    
+
 
     # --- Logging finale ---
     log_df = pd.DataFrame(rows)
@@ -650,7 +650,7 @@ def run_ucb1_partial_regime_score_comb(df, T0, t_axis, lam=2.0):
             **mu_vals,
             **N_vals
         })
-        
+
 
     # --- UCB1 con regime-aware scoring ---
     for idx in range(3 * (T0+1), len(t_axis)):
@@ -661,7 +661,7 @@ def run_ucb1_partial_regime_score_comb(df, T0, t_axis, lam=2.0):
         for a in arms:
             mean_a = rewards_sum[a] / max(pulls[a], 1)
             sigma_a = np.std(y_obs[a]) if len(y_obs[a]) > 1 else 0.0
-            expl = sqrt(2.0 * log(max(t, 2)) / max(pulls[a], 1))
+            expl = 0.1*sqrt(2.0 * log(max(t, 2)) / max(pulls[a], 1))
 
             # Regime-dependent exploitation term
             if regime_t == "Bull":
@@ -691,7 +691,7 @@ def run_ucb1_partial_regime_score_comb(df, T0, t_axis, lam=2.0):
             **mu_vals,
             **N_vals
         })
-       
+
 
     # --- Logging finale ---
     log_df = pd.DataFrame(rows)
@@ -739,12 +739,12 @@ def calculate_metrics(cumret, mar_per_period=0.0):
         maxdd=maxdd,
         calmar=calmar
     )
-    
 
 
 
 
-    
+
+
 
 
 
@@ -801,7 +801,7 @@ def simulate_once(seed=None,
     strategies = {
         "CP-UCB": log_cp_after_std["reward"].to_numpy(),
         "CP-RegimeAware": log_cp_after_score["reward"].to_numpy(),
-        
+
     }
 
     # 3) Wealth cumulato
@@ -809,11 +809,11 @@ def simulate_once(seed=None,
         name: compute_cumwealth(rets) for name, rets in strategies.items()
     })
 
-   
+
     min_len = min(len(v) for v in cum_wealth_df.values.T)
     cum_wealth_df = cum_wealth_df.iloc[:min_len]
 
-    
+
     start_idx = 3 * (warmup + 1) + 1
     dates = df_real_with_regime.index[start_idx: start_idx + min_len]
     cum_wealth_df.index = dates
@@ -828,14 +828,15 @@ def simulate_once(seed=None,
 #  MONTE CARLO (only CP-based)
 # =========================
 
-n_mc = 2#500
+n_mc = 500
 base_seed = 100
 
 alpha_target = 0.10
 eta          = 0.005
 lam          = 0.5
 epsilon      = 0.03
-warmup       = 210
+warmup       = 30
+
 
 
 B            = 0.5
@@ -856,13 +857,13 @@ for mc in range(n_mc):
         warmup=warmup,
         epsilon=epsilon,
     )
-    
+
     if strategy_names is None:
         strategy_names = list(cum_wealth_df.columns)   # solo CP-based
         all_wealth_paths = {name: [] for name in strategy_names}
         all_metrics = {name: [] for name in strategy_names}
-    
-   
+
+
     for name in strategy_names:
         path = cum_wealth_df[name].values.astype(float)
         all_wealth_paths[name].append(path)
@@ -894,7 +895,7 @@ dates_mc = dates_full[mask_eval]
 T_eff = dates_mc.shape[0]
 
 
-for name in strategy_names:  
+for name in strategy_names:
     M = all_wealth_paths[name]          # shape: (n_mc, T_eff_full)
     M = M[:, mask_eval]                 # only hold from 2018 onwards
     M = M / M[:, [0]]                   # rebase: wealth = 1 at the first date >= 2018
@@ -916,10 +917,10 @@ for name in strategy_names:
     mean_curve = M.mean(axis=0)
     std_curve  = M.std(axis=0, ddof=1)
     se_curve   = std_curve / np.sqrt(n_mc)
- 
+
     lower = mean_curve - z * se_curve
     upper = mean_curve + z * se_curve
-    
+
     #########################
     # CI WITH EMPIRICAL QUANTILES
     #alpha=0.05
@@ -990,18 +991,18 @@ for name, rets in strategies_det_returns.items():
 
     wealth_full = compute_cumwealth(rets)
 
-   
+
     wealth_full = wealth_full[:T_eff_full]
 
-  
+
     wealth_sub = wealth_full[mask_eval]
 
- 
+
     wealth_rebased = wealth_sub / wealth_sub[0]
 
     det_wealth[name] = wealth_rebased
 
-    
+
     mean_curves[name] = wealth_rebased
     ci_lower[name] = wealth_rebased
     ci_upper[name] = wealth_rebased
@@ -1096,7 +1097,7 @@ for name in strategy_names_all:
         ax.plot(dates_mc, y_mean, "--", alpha=0.9, label=name)
 
     elif name in det_bandit_strategies:
-        
+
         ax.plot(dates_mc, y_mean, lw=1.8, label=name)
         # (ci_lower == ci_upper per queste, se vuoi NON fai fill)
 
@@ -1120,7 +1121,7 @@ ax.legend(loc="upper left")
 plt.tight_layout()
 #plt.show()
 
-# 🔽 SALVA IL PLOT 
+# 🔽 SALVA IL PLOT
 output_path = os.path.join(output_dir, "Cumulative_Wealth_with_Market_Regimes.png")
 plt.savefig(output_path, dpi=300, bbox_inches='tight')
 
@@ -1141,7 +1142,7 @@ metrics_summary = {}
 
 
 for name in strategy_names:  # CP-UCB, CP-RegimeAware
-    M = all_wealth_paths[name]  
+    M = all_wealth_paths[name]
 
     summary = {}
     for m in metric_names:
@@ -1188,7 +1189,6 @@ metrics_ci_df.to_csv(f"performance_metrics_partial_{lam}.csv", index=True)
 
 
 
-
 def rolling_caviar_aci_with_scaling(
     y_obs, t_local, alpha_t,
     scores_history,
@@ -1199,9 +1199,9 @@ def rolling_caviar_aci_with_scaling(
 ):
 
 
-    
-    window_data = np.asarray(y_obs[:-1], float)   
-    
+
+    window_data = np.asarray(y_obs[:-1], float)
+
 
 
     y_t = float(y_obs[-1])
@@ -1210,16 +1210,16 @@ def rolling_caviar_aci_with_scaling(
     tau_low, tau_high = alpha_target/2.0, 1.0 - alpha_target/2.0
 
 
-   
+
     ########## PREDICTOR: EMPIRICAL QUANTILE
     q_low_t = np.quantile(window_data, tau_low)
     q_high_t = np.quantile(window_data, tau_high)
-    
-       
-    
+
+
+
     recent_scores = scores_history
-    
-    
+
+
     nc = len(recent_scores)
     if nc == 0:
         qn = 0.0
@@ -1231,14 +1231,14 @@ def rolling_caviar_aci_with_scaling(
     # 4) predictive interval
     L_t = float(q_low_t  - qn)
     U_t = float(q_high_t + qn)
-    
 
 
-       
+
+
     score_t = max(q_low_t - y_t, y_t - q_high_t)
-    scores_history.append(float(score_t))          
-    
-    
+    scores_history.append(float(score_t))
+
+
     # 6) ACI update
     covered = 1 if (L_t <= y_t <= U_t) else 0
     err = 1 - covered
@@ -1265,7 +1265,7 @@ def run_ucb_cp_full(df, *,
     K, T = len(arms), len(df)
     T0 = lookback
 
-   
+
 
     L_act   = {a: np.nan for a in arms}
     U_act   = {a: np.nan for a in arms}
@@ -1278,7 +1278,7 @@ def run_ucb_cp_full(df, *,
 
     rows = []
 
-   
+
     for t in range(T):
         regime_t = df["Regime"].iloc[t]
         # --- Warm-up ---
@@ -1305,7 +1305,7 @@ def run_ucb_cp_full(df, *,
         for a in arms:
             y_obs[a].append(float(df[a].iloc[t]))
 
-        
+
         r_t = y_obs[k_t][-1]
 
 
@@ -1332,8 +1332,8 @@ def run_ucb_cp_full(df, *,
                 L_act[a], U_act[a], ESI_act[a] =  L, U, esi
                 alpha_k[a] = float(np.clip(alpha_new, 1e-4, 0.5))
 
-                
-       
+
+
 
 
 
@@ -1374,16 +1374,22 @@ def run_ucb_cp_full(df, *,
 # ===================================================
 
 
-T0 = lookback=210
+T0 = lookback=30
 caviar_model="AS"
+
+alpha_target = 0.2
+
+eta          = 0.005
+
+
 # ===================================================
 # 1️⃣ Esegui tutte le strategie
 # ===================================================
 log_cp_score_full_solo_u, log_cp_after_score_full_solo_u, _ = run_ucb_cp_full( # SOLO U
-    df_real_with_regime, lookback=lookback, caviar_model=caviar_model, G=10.0, regime_mode=None
+    df_real_with_regime, lookback=lookback, alpha_target=alpha_target,eta=eta, caviar_model=caviar_model, G=10.0, regime_mode=None
 )
 log_cp_score_full_regime_l, log_cp_after_score_full_regime_l, _ = run_ucb_cp_full( # L se risk
-    df_real_with_regime, lookback=lookback, caviar_model=caviar_model, G=10.0, regime_mode="score"
+    df_real_with_regime, lookback=lookback, alpha_target=alpha_target,eta=eta, caviar_model=caviar_model, G=10.0, regime_mode="score"
 )
 
 
@@ -1408,10 +1414,10 @@ def compute_cumwealth(rewards):
 strategies = {
 
     "UCB-CP (full)": log_cp_after_score_full_solo_u["reward"].to_numpy(),
-   
+
     "CP-RegimeAware (full)": log_cp_after_score_full_regime_l["reward"].to_numpy(),
 
-    
+
 }
 
 
@@ -1451,8 +1457,8 @@ print(f"✅ Numero di osservazioni nella finestra: {len(dates_eval)}")
 
 strategies_aligned = {}
 for k, v in strategies.items():
-    v = np.asarray(v, float)[:min_len]  
-    v = v[mask_eval]                    
+    v = np.asarray(v, float)[:min_len]
+    v = v[mask_eval]
     strategies_aligned[k] = v
 
 
@@ -1541,7 +1547,7 @@ plt.xlabel("Date")
 plt.ylabel("Cumulative Wealth")
 plt.grid(True, ls="--", alpha=0.5)
 plt.legend()
-# 🔽 SALVA IL PLOT 
+# 🔽 SALVA IL PLOT
 output_path = os.path.join(output_dir, "AS_Cumulative_Wealth.png")
 plt.savefig(output_path, dpi=300, bbox_inches='tight')
 
@@ -1583,7 +1589,7 @@ def add_regime_background(ax, df_regime, alpha=0.15):
             start_idx = t
             current_regime = regimes[t]
 
-  
+
     ax.axvspan(dates[start_idx], dates[-1],
                color=colors[current_regime], alpha=alpha)
 
@@ -1592,7 +1598,7 @@ def add_regime_background(ax, df_regime, alpha=0.15):
     ax.legend(handles=patches, loc="upper left", frameon=False)
 
 
-    
+
 plt.figure(figsize=(14, 7))
 ax = plt.gca()
 
@@ -1619,3 +1625,496 @@ plt.savefig(output_path, dpi=300, bbox_inches='tight')
 
 
 print(f"✅ Salvato: {output_path}")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def plot_arm_logreturn_gaps(df_real_with_regime,
+                            output_dir,
+                            start_date=None,
+                            end_date=None,
+                            add_regimes=True,
+                            save_csv=True):
+    """
+    Outputs:
+    1. Signed log-return gap plots:
+        MV - SA log-return gap
+        SA - EW log-return gap
+        EW - MV log-return gap
+
+    2. Absolute log-return gap plots:
+        MV--SA absolute log-return gap
+        SA--EW absolute log-return gap
+        EW--MV absolute log-return gap
+
+    3. Summary statistics of absolute log-return gaps.
+
+    4. Summary statistics and characterization table of the three portfolio arms.
+
+    Mapping:
+        Arm 1 = MV
+        Arm 2 = SA
+        Arm 3 = EW
+    """
+
+    import os
+    import pandas as pd
+    import matplotlib.pyplot as plt
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    df_plot = df_real_with_regime.copy()
+
+    if start_date is not None:
+        df_plot = df_plot.loc[df_plot.index >= pd.to_datetime(start_date)]
+
+    if end_date is not None:
+        df_plot = df_plot.loc[df_plot.index <= pd.to_datetime(end_date)]
+
+    if df_plot.empty:
+        raise ValueError("df_plot is empty. Check start_date/end_date.")
+
+    required_cols = ["Arm 1", "Arm 2", "Arm 3"]
+    missing_cols = [c for c in required_cols if c not in df_plot.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns in df_real_with_regime: {missing_cols}")
+
+    # =====================================================
+    # 0) Rename arms using economic strategy names
+    # =====================================================
+    arm_name_map = {
+        "Arm 1": "MV",
+        "Arm 2": "SA",
+        "Arm 3": "EW"
+    }
+
+    returns_df = df_plot[["Arm 1", "Arm 2", "Arm 3"]].rename(columns=arm_name_map)
+
+    # =====================================================
+    # 1) Statistics of individual portfolio-arm log-returns
+    # =====================================================
+    arm_returns_stats = pd.DataFrame({
+        "count": returns_df.count(),
+        "mean": returns_df.mean(),
+        "variance": returns_df.var(),
+        "std": returns_df.std(),
+        "min": returns_df.min(),
+        "q05": returns_df.quantile(0.05),
+        "q10": returns_df.quantile(0.10),
+        "q25": returns_df.quantile(0.25),
+        "q50": returns_df.quantile(0.50),
+        "q75": returns_df.quantile(0.75),
+        "q90": returns_df.quantile(0.90),
+        "q95": returns_df.quantile(0.95),
+        "max": returns_df.max(),
+        "skewness": returns_df.skew(),
+        "kurtosis": returns_df.kurtosis()
+    }).round(6)
+
+    print("\n=== Individual Portfolio-Arm Log-return Statistics ===")
+    print(arm_returns_stats)
+
+    arm_returns_stats_bps = arm_returns_stats.copy()
+
+    bps_return_cols = [
+        "mean", "std", "min",
+        "q05", "q10", "q25", "q50",
+        "q75", "q90", "q95", "max"
+    ]
+
+    for col in bps_return_cols:
+        arm_returns_stats_bps[col] = arm_returns_stats_bps[col] * 10000
+
+    arm_returns_stats_bps["variance"] = arm_returns_stats_bps["variance"] * (10000 ** 2)
+
+    print("\n=== Individual Portfolio-Arm Log-return Statistics in Basis Points ===")
+    print(arm_returns_stats_bps.round(3))
+
+    # =====================================================
+    # 2) Arm characterization table
+    # =====================================================
+    arm_characterization_table = pd.DataFrame({
+        "Arm": ["Arm 1", "Arm 2", "Arm 3"],
+        "Strategy": ["MV", "SA", "EW"],
+        "Allocation rule": [
+            r"$W_j^{\mathrm{MV}}=\arg\min_{W_j^\top\mathbf{1}=1}\left(W_j^\top\Sigma_jW_j-R_j^\top W_j\right)$",
+            r"$W_j^{\mathrm{SA}}=0$",
+            r"$W_j^{\mathrm{EW}}=\frac{1}{n}\mathbf{1}$"
+        ],
+        "Interpretation": [
+            "Active mean--variance allocation balancing expected return and risk.",
+            "Sell-All strategy, corresponding to a full liquidation of risky positions.",
+            "Equally-weighted allocation across the risky assets."
+        ],
+        "Sample mean": [
+            arm_returns_stats.loc["MV", "mean"],
+            arm_returns_stats.loc["SA", "mean"],
+            arm_returns_stats.loc["EW", "mean"]
+        ],
+        "Sample s.d.": [
+            arm_returns_stats.loc["MV", "std"],
+            arm_returns_stats.loc["SA", "std"],
+            arm_returns_stats.loc["EW", "std"]
+        ]
+    })
+
+    print("\n=== Portfolio-Arm Characterization Table ===")
+    print(arm_characterization_table)
+
+    # =====================================================
+    # 3) Define signed and absolute log-return gaps
+    # =====================================================
+    signed_gaps_df = pd.DataFrame(index=df_plot.index)
+    absolute_gaps_df = pd.DataFrame(index=df_plot.index)
+
+    signed_gaps_df["MV - SA log-return gap"] = returns_df["MV"] - returns_df["SA"]
+    signed_gaps_df["SA - EW log-return gap"] = returns_df["SA"] - returns_df["EW"]
+    signed_gaps_df["EW - MV log-return gap"] = returns_df["EW"] - returns_df["MV"]
+
+    absolute_gaps_df["MV--SA absolute log-return gap"] = (
+        returns_df["MV"] - returns_df["SA"]
+    ).abs()
+
+    absolute_gaps_df["SA--EW absolute log-return gap"] = (
+        returns_df["SA"] - returns_df["EW"]
+    ).abs()
+
+    absolute_gaps_df["EW--MV absolute log-return gap"] = (
+        returns_df["EW"] - returns_df["MV"]
+    ).abs()
+
+    # =====================================================
+    # 4) Statistics of absolute log-return gaps
+    # =====================================================
+    quantile_levels = [0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95]
+
+    absolute_gap_stats = pd.DataFrame({
+        "count": absolute_gaps_df.count(),
+        "mean_absolute_gap": absolute_gaps_df.mean(),
+        "std_absolute_gap": absolute_gaps_df.std(),
+        "variance_absolute_gap": absolute_gaps_df.var(),
+        "min_absolute_gap": absolute_gaps_df.min(),
+        "q05_absolute_gap": absolute_gaps_df.quantile(0.05),
+        "q10_absolute_gap": absolute_gaps_df.quantile(0.10),
+        "q25_absolute_gap": absolute_gaps_df.quantile(0.25),
+        "q50_absolute_gap": absolute_gaps_df.quantile(0.50),
+        "q75_absolute_gap": absolute_gaps_df.quantile(0.75),
+        "q90_absolute_gap": absolute_gaps_df.quantile(0.90),
+        "q95_absolute_gap": absolute_gaps_df.quantile(0.95),
+        "max_absolute_gap": absolute_gaps_df.max(),
+        "skewness_absolute_gap": absolute_gaps_df.skew(),
+        "kurtosis_absolute_gap": absolute_gaps_df.kurtosis()
+    }).round(6)
+
+    print("\n=== Absolute Log-return Gap Statistics ===")
+    print(absolute_gap_stats)
+
+    absolute_gap_summary_table = absolute_gap_stats[
+        ["mean_absolute_gap", "std_absolute_gap"]
+    ].copy()
+
+    absolute_gap_summary_table.columns = [
+        "Sample mean",
+        "Sample s.d."
+    ]
+
+    print("\n=== Absolute Log-return Gap Summary Table ===")
+    print(absolute_gap_summary_table)
+
+    absolute_gap_stats_bps = absolute_gap_stats.copy()
+
+    bps_gap_cols = [
+        "mean_absolute_gap",
+        "std_absolute_gap",
+        "min_absolute_gap",
+        "q05_absolute_gap",
+        "q10_absolute_gap",
+        "q25_absolute_gap",
+        "q50_absolute_gap",
+        "q75_absolute_gap",
+        "q90_absolute_gap",
+        "q95_absolute_gap",
+        "max_absolute_gap"
+    ]
+
+    for col in bps_gap_cols:
+        absolute_gap_stats_bps[col] = absolute_gap_stats_bps[col] * 10000
+
+    absolute_gap_stats_bps["variance_absolute_gap"] = (
+        absolute_gap_stats_bps["variance_absolute_gap"] * (10000 ** 2)
+    )
+
+    print("\n=== Absolute Log-return Gap Statistics in Basis Points ===")
+    print(absolute_gap_stats_bps.round(3))
+
+    # =====================================================
+    # 5) Plot signed log-return gaps together
+    # =====================================================
+    plt.figure(figsize=(14, 7))
+    ax = plt.gca()
+
+    if add_regimes and "Regime" in df_plot.columns:
+        add_regime_background(ax, df_plot, alpha=0.08)
+
+    for col in signed_gaps_df.columns:
+        ax.plot(signed_gaps_df.index, signed_gaps_df[col], lw=1.2, label=col)
+
+    ax.axhline(0.0, color="black", lw=1.0, linestyle="--", alpha=0.7)
+
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Signed Log-return Gap between Arms")
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="upper left")
+
+    plt.tight_layout()
+
+    output_path_signed = os.path.join(output_dir, "Signed_LogReturn_Gaps_Portfolio_Arms.png")
+    plt.savefig(output_path_signed, dpi=300, bbox_inches="tight")
+    plt.show()
+
+    print(f"✅ Salvato: {output_path_signed}")
+
+    # =====================================================
+    # 6) Plot absolute log-return gaps together
+    # =====================================================
+    plt.figure(figsize=(14, 7))
+    ax = plt.gca()
+
+    if add_regimes and "Regime" in df_plot.columns:
+        add_regime_background(ax, df_plot, alpha=0.08)
+
+    for col in absolute_gaps_df.columns:
+        ax.plot(absolute_gaps_df.index, absolute_gaps_df[col], lw=1.2, label=col)
+
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Absolute Log-return Gap between Arms")
+    ax.grid(True, linestyle="--", alpha=0.5)
+    ax.legend(loc="upper left")
+
+    plt.tight_layout()
+
+    output_path_absolute = os.path.join(output_dir, "Absolute_LogReturn_Gaps_Portfolio_Arms.png")
+    plt.savefig(output_path_absolute, dpi=300, bbox_inches="tight")
+    plt.show()
+
+    print(f"✅ Salvato: {output_path_absolute}")
+
+    # =====================================================
+    # 7) Separate signed log-return gap plots
+    # =====================================================
+    for col in signed_gaps_df.columns:
+
+        plt.figure(figsize=(14, 5))
+        ax = plt.gca()
+
+        if add_regimes and "Regime" in df_plot.columns:
+            add_regime_background(ax, df_plot, alpha=0.08)
+
+        ax.plot(signed_gaps_df.index, signed_gaps_df[col], lw=1.3, label=col)
+        ax.axhline(0.0, color="black", lw=1.0, linestyle="--", alpha=0.7)
+
+        ax.set_title(col)
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Signed Log-return Gap between Arms")
+        ax.grid(True, linestyle="--", alpha=0.5)
+        ax.legend(loc="upper left")
+
+        plt.tight_layout()
+
+        safe_name = (
+            col.replace(" ", "_")
+               .replace("--", "_")
+               .replace("-", "minus")
+               .replace(".", "")
+        )
+
+        output_path_single_signed = os.path.join(
+            output_dir,
+            f"Signed_{safe_name}.png"
+        )
+
+        plt.savefig(output_path_single_signed, dpi=300, bbox_inches="tight")
+        plt.show()
+
+        print(f"✅ Salvato: {output_path_single_signed}")
+
+    # =====================================================
+    # 8) Separate absolute log-return gap plots
+    # =====================================================
+    for col in absolute_gaps_df.columns:
+
+        plt.figure(figsize=(14, 5))
+        ax = plt.gca()
+
+        if add_regimes and "Regime" in df_plot.columns:
+            add_regime_background(ax, df_plot, alpha=0.08)
+
+        ax.plot(absolute_gaps_df.index, absolute_gaps_df[col], lw=1.3, label=col)
+
+        ax.set_title(col)
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Absolute Log-return Gap between Arms")
+        ax.grid(True, linestyle="--", alpha=0.5)
+        ax.legend(loc="upper left")
+
+        plt.tight_layout()
+
+        safe_name = (
+            col.replace(" ", "_")
+               .replace("--", "_")
+               .replace("-", "minus")
+               .replace(".", "")
+        )
+
+        output_path_single_absolute = os.path.join(
+            output_dir,
+            f"Absolute_{safe_name}.png"
+        )
+
+        plt.savefig(output_path_single_absolute, dpi=300, bbox_inches="tight")
+        plt.show()
+
+        print(f"✅ Salvato: {output_path_single_absolute}")
+
+    # =====================================================
+    # 9) Distribution plots of absolute log-return gaps
+    # =====================================================
+    for col in absolute_gaps_df.columns:
+
+        x = absolute_gaps_df[col].dropna()
+        q_vals = x.quantile(quantile_levels)
+
+        plt.figure(figsize=(10, 6))
+        ax = plt.gca()
+
+        ax.hist(x, bins=50, alpha=0.75, edgecolor="black")
+
+        for q_level, q_value in q_vals.items():
+            ax.axvline(
+                q_value,
+                linestyle="--",
+                lw=1.2,
+                label=f"q{int(q_level * 100)} = {q_value:.5f}"
+            )
+
+        ax.set_title(f"Distribution of {col}")
+        ax.set_xlabel("Absolute Log-return Gap between Arms")
+        ax.set_ylabel("Frequency")
+        ax.grid(True, linestyle="--", alpha=0.5)
+        ax.legend(loc="upper right")
+
+        plt.tight_layout()
+
+        safe_name = (
+            col.replace(" ", "_")
+               .replace("--", "_")
+               .replace("-", "minus")
+               .replace(".", "")
+        )
+
+        output_path_distribution = os.path.join(
+            output_dir,
+            f"Distribution_{safe_name}.png"
+        )
+
+        plt.savefig(output_path_distribution, dpi=300, bbox_inches="tight")
+        plt.show()
+
+        print(f"✅ Salvato: {output_path_distribution}")
+
+    # =====================================================
+    # 10) Save CSV and LaTeX tables
+    # =====================================================
+    if save_csv:
+        returns_df.to_csv(os.path.join(output_dir, "portfolio_arm_logreturns_timeseries.csv"))
+
+        signed_gaps_df.to_csv(
+            os.path.join(output_dir, "signed_logreturn_gaps_portfolio_arms_timeseries.csv")
+        )
+
+        absolute_gaps_df.to_csv(
+            os.path.join(output_dir, "absolute_logreturn_gaps_portfolio_arms_timeseries.csv")
+        )
+
+        arm_returns_stats.to_csv(
+            os.path.join(output_dir, "portfolio_arm_logreturn_statistics.csv")
+        )
+
+        arm_returns_stats_bps.to_csv(
+            os.path.join(output_dir, "portfolio_arm_logreturn_statistics_bps.csv")
+        )
+
+        absolute_gap_stats.to_csv(
+            os.path.join(output_dir, "absolute_logreturn_gap_statistics.csv")
+        )
+
+        absolute_gap_stats_bps.to_csv(
+            os.path.join(output_dir, "absolute_logreturn_gap_statistics_bps.csv")
+        )
+
+        absolute_gap_summary_table.to_csv(
+            os.path.join(output_dir, "absolute_logreturn_gap_summary_table.csv")
+        )
+
+        arm_characterization_table.to_csv(
+            os.path.join(output_dir, "portfolio_arm_characterization_table.csv"),
+            index=False
+        )
+
+        # LaTeX tables
+        with open(os.path.join(output_dir, "portfolio_arm_characterization_table.tex"), "w") as f:
+            f.write(
+                arm_characterization_table.to_latex(
+                    index=False,
+                    escape=False,
+                    float_format="%.6f"
+                )
+            )
+
+        with open(os.path.join(output_dir, "absolute_logreturn_gap_summary_table.tex"), "w") as f:
+            f.write(
+                absolute_gap_summary_table.to_latex(
+                    escape=False,
+                    float_format="%.6f"
+                )
+            )
+
+        print("✅ Salvati CSV e tabelle LaTeX con notazione MV, SA, EW.")
+
+    return (
+        signed_gaps_df,
+        absolute_gaps_df,
+        absolute_gap_stats,
+        absolute_gap_stats_bps,
+        absolute_gap_summary_table,
+        returns_df,
+        arm_returns_stats,
+        arm_returns_stats_bps,
+        arm_characterization_table
+    )
+
+
+
+signed_gaps_df, absolute_gaps_df, absolute_gap_stats, absolute_gap_stats_bps, \
+absolute_gap_summary_table, returns_df, arm_returns_stats, arm_returns_stats_bps, \
+arm_characterization_table = plot_arm_logreturn_gaps(
+    df_real_with_regime=df_real_with_regime,
+    output_dir=output_dir,
+    start_date="2018-01-01",
+    end_date=None,
+    add_regimes=True,
+    save_csv=True
+)

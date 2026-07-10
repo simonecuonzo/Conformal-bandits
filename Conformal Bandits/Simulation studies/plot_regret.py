@@ -12,7 +12,6 @@ label_map = {
     "UCB-CP (comb)": "CP-BANDIT (λ=0.7)",
     "UCB-CP (L)": "CP-BANDIT (λ=1)",
     "UCB-CP (UL)": "CP-BANDIT (λ=0.5)",
-    "UCB-CP (ESI)": "CP-ESI",
     "UCB1": "UCB1",
    
 }
